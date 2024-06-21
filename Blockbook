@@ -1,0 +1,514 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[ ]:
+
+
+import binance 
+import json
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt 
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.widgets import Slider
+import tkinter
+import time
+from datetime import datetime
+from tkinter import ttk
+from tkinter import *
+
+
+
+
+url = 'https://fapi.binance.com/fapi/v1/premiumIndex'
+res = requests.get(url)
+data=json.loads(res.text)
+
+variable = {}
+with open('credentials.txt', 'r') as file:
+    for line in file:
+        name, _, value = line.partition('=')
+        variable[name.strip()] = value.strip()
+
+BINANCE_API_KEY=(variable['BINANCE_API_KEY'])
+BINANCE_API_SECRET_KEY=(variable['BINANCE_API_SECRET_KEY'])
+AVG_FR=float((variable['AVG_FR']))
+client = binance.Client(BINANCE_API_KEY, BINANCE_API_SECRET_KEY)
+
+ventana=tkinter.Tk()
+ventana.geometry("410x310")
+
+coin_tiket=StringVar()
+range_token=IntVar() 
+unix_timestamp = round(float(time.time()))
+
+def close_graph():
+    top.destroy()
+    top.update()
+
+def Funding_info(tiket_book):
+    try:
+
+    #funding rate last
+
+        financing_rate = client.futures_funding_rate(symbol=tiket_book)[-1]
+        funding_time=round(float((financing_rate["fundingTime"])/1000))
+        var1=int(funding_time)+8*3600
+        var2=int(unix_timestamp)
+        funding_time_ends=(var1-var2)
+        funding_rate=float(financing_rate["fundingRate"])
+        funding_time_easy=datetime.utcfromtimestamp(funding_time_ends).strftime('%H:%M:%S')
+        previous_rate=round((funding_rate*100),4)
+
+
+    #actual funding rate
+
+        filtered_prices = list(filter(lambda x: x['symbol'] == tiket_book, data))
+        funding_rate_now =round(float(filtered_prices[0]['lastFundingRate'] if filtered_prices else None)*100,4)
+
+
+        return(funding_time_easy,previous_rate,funding_rate_now)
+
+    except:
+        
+        funding_time_easy=0
+        previous_rate=0
+        funding_rate_now=0
+        
+        return(funding_time_easy,previous_rate,funding_rate_now)
+    
+#funcion de ajustar grafico
+
+
+def check_coin():
+    global top
+    try:
+        close_graph()
+    except:
+        None
+    try:
+        token1= coin_futures.get().upper()
+        tiket_book=token1+"USDT"     
+        if switch_var.get():
+            tiket_book_spot=token1+"BUSD"
+        else:
+            tiket_book_spot=tiket_book
+            
+        #artificio de titulo
+        Title_except="SPOT"
+        
+        amplitud=int(range_coin.get())
+        longitud=amplitud*100
+        
+        if tiket_book_spot=="LUNCUSDT":
+            tiket_book="1000LUNCUSDT"
+            fact_price=1000
+        elif tiket_book_spot=="SHIBUSDT":
+            tiket_book="1000SHIBUSDT"
+            fact_price=1000
+        elif tiket_book_spot== "XECUSDT":
+            tiket_book="1000XECUSDT"
+            fact_price=1000
+        elif tiket_book_spot=="LUNAUSDT":
+            tiket_book="LUNA2USDT"
+            fact_price=1
+        elif tiket_book_spot=="PEPEUSDT":
+            tiket_book="1000PEPEUSDT"
+            fact_price=1000
+        else:
+            fact_price=1
+
+        try:
+            
+            order_book = client.futures_order_book(symbol = tiket_book, limit = longitud)
+            order_book = pd.DataFrame(order_book)
+            #price futures
+            price_now = client.futures_mark_price(symbol = tiket_book)
+            
+            try:
+                order_book_spot = client.get_order_book(symbol = tiket_book_spot, limit = longitud)
+                price_now_spot = client.get_symbol_ticker(symbol= tiket_book_spot)
+                order_book_spot = pd.DataFrame(order_book_spot)
+                
+            except:
+                fact_price=1
+                Title_except="FUTURES"
+                #si no hay spot entonces agarramos el precio de spot y el libro seria cero
+                price_now_spot=price_now
+                order_book_spot=order_book
+                #for i in range(len(order_book_spot['bids'])):
+                #   order_book_spot['bids'][i][1] = order_book['bids'][1][1]
+                #for j in range(len(order_book_spot['asks'])):
+                #   order_book_spot['asks'][j][1] = order_book['bids'][1][1]
+                
+
+        except:
+            
+            None
+
+
+
+
+
+        # Obtén la tasa de financiación del par de margen
+        
+        (funding_time_easy,previous_rate,funding_rate_now)=Funding_info(tiket_book)
+        print(fact_price)
+
+        bids = pd.DataFrame(order_book['bids'])
+        print(bids)
+        asks = pd.DataFrame(order_book['asks'])
+        print(asks)
+        print(" a cont spot")
+        #spot bids and asks
+        try:
+            bids_spot = pd.DataFrame(order_book_spot['bids'])
+            asks_spot = pd.DataFrame(order_book_spot['asks'])
+        except:
+            bids_spot=[0]
+            asks_spot=[0]
+        print(" a cont no se que")
+        #float(asks.head(1)['asks'][0][0])
+        ask_min = float(asks['asks'].iloc[0][0])
+        bid_max = float(bids['bids'].iloc[-1][0])
+        
+        print("price now",price_now)
+        
+        price = float(price_now["markPrice"])
+        
+        
+        #print( f' price {price} \n Diferencia : {ask_min- bid_max} \n Diferencia PCT: {dif_pct} ' )
+        prices_b = [float(x[0]) for x in order_book['bids']]
+        prices_b_spot = [float(x[0]) for x in order_book_spot['bids']]
+        prices_a = [float(x[0]) for x in order_book['asks']]
+        prices_a_spot = [float(x[0]) for x in order_book_spot['asks']]
+        qtts_b = [float(x[1]) for x in order_book['bids']]
+        qtts_b_spot = [float(x[1]) for x in order_book_spot['bids']]
+        qtts_a = [float(x[1]) for x in order_book['asks']]
+        qtts_a_spot = [float(x[1]) for x in order_book_spot['asks']]
+        
+        #convierte los precios a numericos
+        
+        p_b = pd.to_numeric(prices_b)
+        p_b_spot = pd.to_numeric(prices_b_spot)
+        p_a = pd.to_numeric(prices_a)
+        p_a_spot = pd.to_numeric(prices_a_spot)
+        
+
+        # Recorrer la lista y dividir cada elemento por el factor en caso de que sean token de 1000
+        try:
+            
+            for j in range(len(p_a_spot)):
+                p_a_spot[j] = p_a_spot[j] * fact_price
+                #print(p_a_spot[j])
+                
+            for i in range(len(p_b_spot)):
+                p_b_spot[i] = p_b_spot[i] * fact_price
+
+            for k in range(len(qtts_a_spot)):
+                #print("quantities bfp")
+                #print(qtts_a_spot[k])
+                qtts_a_spot[k] = qtts_a_spot[k] / fact_price
+                #print("quantities")
+                #print(qtts_a_spot[k])
+            for l in range(len(qtts_b_spot)):
+                qtts_b_spot[l] = qtts_b_spot[l] / fact_price
+                
+        except:
+            
+            qtts_b_spot=[]
+            qtts_a_spot=[]
+            p_b_spot=[]
+            p_a_spot=[]
+        
+            
+        #print(qtts_b,"qb spot")
+        #print(qtts_a,"qa spot")
+        
+
+        #calculo del maximo y minimo de futuros
+        
+        min_price=min(p_b)
+        max_price_b=max(p_b)
+        max_price=max(p_a)
+        min_price_a=min(p_a)
+        
+        delta_up=max_price_b-min_price
+        delta_down=max_price-min_price_a
+        
+        #maxima diferencia entre futuros
+        
+        delta_max_futures=max([delta_up,delta_down])
+        
+        try:
+            #calculo del maximo y minimo de spot y futuros en el rango Y
+
+            min_price_spot=min(p_b_spot)
+            max_price_spot_b=max(p_b_spot)
+            max_price_spot=max(p_a_spot)
+            min_price_spot_a=min(p_a_spot)
+
+            delta_spot_up=max_price_spot_b-min_price_spot
+            delta_spot_down=max_price_spot-min_price_spot_a
+
+            #maxima diferencia entre spot
+
+            spot_delta_max=max([delta_spot_up,delta_spot_down])
+            
+        except:
+            spot_delta_max=delta_max_futures
+        
+        #maxima delta entre spot y futuros
+
+        delta_max_coin=max([spot_delta_max,delta_max_futures])
+        
+        #precios de referencia para grafica no considerar en caso de cambiar algo
+        
+        price_graph=min(p_a)
+
+        #calculando deltas de los precios para mayor cobertura
+
+        q_b = pd.to_numeric(qtts_b)
+        q_b_spot = pd.to_numeric(qtts_b_spot)
+        q_a = pd.to_numeric(qtts_a)
+        q_a_spot = pd.to_numeric(qtts_a_spot)
+        
+        #calculando el promedio de todas las ordenes
+        # q_b es compras en futuros
+        # q_a es ventas en futuros
+        # q_b_spot es compras en spot
+        # q_a_spot es ventas en spot
+        
+        # calculando el promedio futuros de tokens por orden
+
+        promedio_1=round(sum(q_b)/len(q_b),2)
+        promedio_2=round(sum(q_a)/len(q_a),2)
+        
+        #calculando el promedio spot de tokens por orden
+        try:
+            promedio_spot_1=round(sum(q_b_spot)/len(q_b_spot),2)
+            promedio_spot_2=round(sum(q_a_spot)/len(q_a_spot),2)
+        except:
+            promedio_spot_1=promedio_1
+            promedio_spot_2=promedio_2
+
+        #calculando el menor de los 4 promedios
+        
+        min_value_avg=min([promedio_spot_1, promedio_spot_2, promedio_1, promedio_2])
+        #print(min_value_avg,"promedio minimo de cantidad por orden")
+                
+        fig, ax = plt.subplots(2, figsize = (10,10))
+
+        #Lines dibujando las ordenes
+
+        ax[0].axvline(x=0, color='k', linestyle='--')
+        ax[1].axvline(x=0, color='k', linestyle='--')
+
+        #Futures axis dibujando
+
+        ax[0].plot(q_a, p_a, color = "r")
+        ax[1].plot(q_b, p_b, color = 'g')
+
+        #spot axis dibujando
+        
+        try:
+            ax[0].plot(-q_a_spot, p_a_spot, color = "r")
+            ax[1].plot(-q_b_spot, p_b_spot, color = 'g')
+
+        except:
+            None
+            b_M_spot=1
+            a_M_spot=1
+            
+        #calculando las ordenes mas grandes
+        
+        b_M = q_b.max()
+        a_M = q_a.max()    
+        
+        #calculando el maximo de spot en ordenes
+        try:
+                        
+            b_M_spot = q_b_spot.max()
+            a_M_spot = q_a_spot.max()
+            #print(b_M_spot,a_M_spot," maximos de ordenes de spot")
+            
+        except:
+            
+            b_M_spot=b_M
+            a_M_spot=a_M
+                
+        
+        #calculando el maximo de todo el token
+        
+        max_amount_x=max([b_M_spot, a_M_spot, b_M, a_M])
+        
+        #print(max_amount_x, "cantidad  maxima de orden del token")
+        #calculando compras y ventas, capturando bloques mas grandes
+        
+        bys = []
+        sls = []
+        
+        for i in range (0, len(prices_b)) :
+            if qtts_b[i] > b_M/1.1 :
+                bys.append(prices_b[i])
+
+        for i in range (0, len(prices_a)) :
+            if qtts_a[i] > a_M/2 :
+                sls.append(prices_a[i])
+                
+
+        #ylim_widget = FloatRangeSlider(value=(-y_max, y_max), min=-y_max, max=y_max, step=y_max/(y_max **(expansion_y)))
+        #aqui comienza el dibujado
+        #dibujando el plot
+
+
+        #poniendo limites a la grafica
+
+        ax[0].set_xlim(-max_amount_x,max_amount_x)
+        ax[1].set_xlim(-max_amount_x,max_amount_x)
+        
+        #aumentando el tamano de letra del eje X e Y
+        
+        #ax[0].tick_params(axis='x', labelsize=15)
+        #ax[1].tick_params(axis='x', labelsize=15)
+        #ax[0].tick_params(axis='y', labelsize=15)
+        #ax[1].tick_params(axis='y', labelsize=15)
+
+
+        
+        #poniendo titulo y creando una nueva ventana para el grafico
+        
+        plt.title(str(Title_except)+" (buyers: "+str(promedio_spot_1)+", sellers: "+str(promedio_spot_2)+")     "+tiket_book+"     "+"FUTURES (buyers: "+str(promedio_1)+", sellers: "+str(promedio_2)+")")
+        top = tkinter.Toplevel()
+        top.title("Gráfico")
+        top.geometry("1000x1060")
+        top.geometry("+0+0")
+        
+        #funcion que hace el zoom 
+        
+        def update(val):
+            x_pos = slider_xscale.val
+            y_pos = slider_yscale.val
+            x_scale = slider_xscale.val
+            y_scale =slider_yscale.val
+            ax[0].set_xlim([-x_scale, x_scale])
+            ax[1].set_xlim([-x_scale, x_scale])
+            max_price_delta=(price_graph-y_scale)+price_graph
+            ax[0].set_ylim([price_graph, max_price_delta])
+            ax[1].set_ylim([y_scale, price_graph])
+            fig.canvas.draw_idle()
+            
+        #dibuja el canvas para contener el grafico
+
+        plt.close('all')
+
+        canvas = FigureCanvasTkAgg(fig, master=top)
+        canvas.draw()
+        canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=1)
+
+        # Creamos dos nuevos objetos Slider para los ejes x e y
+        
+        ax_xscale = fig.add_axes([0.2, 0.06, 0.55, 0.01], facecolor='lightgoldenrodyellow')
+        slider_xscale = Slider(ax_xscale, 'x scale', min_value_avg, max_amount_x, valinit=max_amount_x)
+
+        ay_yscale = fig.add_axes([0.2, 0.03, 0.55, 0.01], facecolor='lightgoldenrodyellow')
+        slider_yscale = Slider(ay_yscale, 'y scale', price_graph-delta_max_coin, price_graph-delta_max_coin+delta_max_coin/2, valinit=price_graph-delta_max_coin)
+        
+        # Crear la toolbar
+        toolbar = NavigationToolbar2Tk(canvas, top)
+        toolbar.update()
+
+        # Agregar la toolbar a la ventana
+        canvas.get_tk_widget().pack(side=tkinter.BOTTOM, fill=tkinter.BOTH, expand=1)
+        toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.X)
+
+        # Asociamos cada objeto Slider a su correspondiente función update()
+        slider_xscale.on_changed(update)
+        slider_yscale.on_changed(update)
+
+        #spot
+        #texto_0=( f' price {price} \n Diferencia : {ask_min- bid_max} \n Diferencia PCT: {dif_pct} ' )
+        
+        #imprimimos el precio y funding rate
+        
+        texto_0=( f' Price: {price} USDT' )
+        texto_1=(f' Compras: \n {bys} \n Ventas: \n {sls}')
+        texto_2=(f'Actual F.R.: {funding_rate_now}%')
+        texto_3=(f"Last F.R.: {str(previous_rate)}%")
+        texto_4=(f"time left: {funding_time_easy}")
+
+        label_box.config(text=texto_0, fg="black",font= "Helvetica 12")
+        label_box1.config(text=texto_1,fg='black',font= "Helvetica 12")
+        
+        #ponemos color al funding rate
+        
+        if float(funding_rate_now)<0:
+            if abs(float(funding_rate_now))>AVG_FR:
+                label_box2.config(text=texto_2,fg='violet red', bg="light cyan",font= "Helvetica 14")
+            else:
+                label_box2.config(text=texto_2,fg='violet red', font= "Helvetica 14")
+
+        else:
+            if abs(float(funding_rate_now))>AVG_FR:
+                label_box2.config(text=texto_2,fg='green', bg="light cyan",font= "Helvetica 14")
+            else:
+                label_box2.config(text=texto_2,fg='green', font= "Helvetica 14")
+
+        if float(previous_rate)<0:    
+            label_box3.config(text=texto_3,fg='violet red',font= "Helvetica 14")
+            label_box4.config(text=texto_4,fg='black',font= "Helvetica 12")
+        else:
+            label_box3.config(text=texto_3,fg='green',font= "Helvetica 14")
+            label_box4.config(text=texto_4,fg='black',font= "Helvetica 12")
+
+    except:
+        label_box.config(text=" ")
+        label_box1.config(text="!!ERROR!!!")
+        label_box2.config(text="DISMINUYE O CAMBIA LA AMPLITUD")
+        label_box3.config(text="DATOS ERRONEOS",fg='violet red',font= "Helvetica 14")
+
+#añadiendo etiquetas
+
+etiqueta=tkinter.Label(ventana, text="ORDERBOOK", fg='black', bg="orange",font= "Helvetica 15")
+etiqueta.grid(row=0, column=1)
+
+etiqueta1=tkinter.Label(ventana, text="COIN: ", bg="white")
+etiqueta1.grid(row=1, column=0)
+
+etiqueta2=tkinter.Label(ventana, text="RANGE (1 to 10): ", bg="white")
+etiqueta2.grid(row=2, column=0)
+
+coin_futures=tkinter.Entry(ventana, textvariable=coin_tiket,font= "Helvetica 15")
+coin_futures.grid(row=1, column=1)
+
+range_coin=tkinter.Entry(ventana, textvariable=range_token,font= "Helvetica 15")
+range_coin.grid(row=2, column=1)
+
+boton1=tkinter.Button(ventana, text="CHECK", width = 10, height = 2, command=check_coin, fg='black', bg='white' )
+boton1.grid(row=3, column=0)
+
+boton2=tkinter.Button(ventana, text="CLEAR", width = 10, height = 2, command=close_graph, fg='white', bg='black' )
+boton2.grid(row=3, column=2)
+
+#switch de pestana boolenana
+
+switch_var = tkinter.BooleanVar(value=False)
+switch = tkinter.Checkbutton(ventana, text="BUSD", variable=switch_var)
+switch.grid(row=1, column=2)
+
+label_box=Label(ventana, text="", font=('Calibri 12'))
+label_box.grid(row=4, column=0, columnspan=10)
+label_box1=Label(ventana, text="", font=('Calibri 12'))
+label_box1.grid(row=5, column=0, columnspan=10)
+label_box2=Label(ventana, text="", font=('Calibri 12'))
+label_box2.grid(row=6, column=0, columnspan=10)
+label_box3=Label(ventana, text="", font=('Calibri 12'))
+label_box3.grid(row=7, column=0, columnspan=10)
+label_box4=Label(ventana, text="", font=('Calibri 12'))
+label_box4.grid(row=8, column=0, columnspan=10)
+
+
+ventana.geometry("+1340+700")
+ventana.attributes('-topmost',True)
+ventana.mainloop()
+
